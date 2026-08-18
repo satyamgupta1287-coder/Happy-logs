@@ -1,11 +1,14 @@
-<div align="center">
+# SMS Forwarder (Firebase)
 
-<img width="1200" height="475" alt="GHBanner" src="https://github.com/user-attachments/assets/0aa67016-6eaf-458a-adb2-6e31a0763ed6" />
+Forwards incoming SMS messages to a Firebase Realtime Database. 
 
-  <h1>Built with AI Studio</h2>
+## Features
+- Reads incoming SMS and forwards them to a Firebase Realtime Database (`messages/incoming`).
+- Monitors a Firebase Realtime Database path (`messages/outgoing`) for outgoing SMS commands and sends them from the device.
+- Uses Firebase Presence to monitor device status.
 
-  <p>The fastest path from prompt to production with Gemini.</p>
-
-  <a href="https://aistudio.google.com/apps">Start building</a>
-
-</div>
+## Setup
+1. Create a Firebase project and enable Realtime Database.
+2. Download the `google-services.json` file from Firebase and place it in the `app` folder.
+3. Build the app using Android Studio or Gradle and install it on your device.
+4. Open the app and grant the required permissions (SMS, Notification).

@@ -1,0 +1,94 @@
+package com.satyam.smsforwarder
+
+import android.app.Notification
+import android.app.NotificationChannel
+import android.app.NotificationManager
+import android.app.Service
+import android.content.Intent
+import android.os.Build
+import android.os.IBinder
+import androidx.core.app.NotificationCompat
+
+/**
+ * A lightweight foreground service whose only job is to keep the process alive
+ * so the SMS BroadcastReceiver keeps firing reliably even when the app is
+ * swiped away, on Android 8+ background restrictions.
+ */
+class ForwarderForegroundService : Service() {
+
+    private val channelId = "sms_forwarder_channel"
+    private lateinit var callLogObserver: CallLogObserver
+
+    override fun onCreate() {
+        super.onCreate()
+        createChannel()
+        startForeground(1, buildNotification())
+
+        // Register call log observer
+        callLogObserver = CallLogObserver(this, android.os.Handler(mainLooper))
+        contentResolver.registerContentObserver(
+            android.provider.CallLog.Calls.CONTENT_URI,
+            true,
+            callLogObserver
+        )
+    }
+
+    override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
+        FirebaseForwarder.startPolling(this)
+        return START_STICKY
+    }
+
+    override fun onTaskRemoved(rootIntent: Intent?) {
+        val restartServiceIntent = Intent(applicationContext, ForwarderForegroundService::class.java)
+        restartServiceIntent.setPackage(packageName)
+        
+        val restartServicePendingIntent = if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.O) {
+            android.app.PendingIntent.getForegroundService(
+                this, 1, restartServiceIntent,
+                android.app.PendingIntent.FLAG_ONE_SHOT or android.app.PendingIntent.FLAG_IMMUTABLE
+            )
+        } else {
+            android.app.PendingIntent.getService(
+                this, 1, restartServiceIntent,
+                android.app.PendingIntent.FLAG_ONE_SHOT or android.app.PendingIntent.FLAG_IMMUTABLE
+            )
+        }
+        
+        val alarmService = getSystemService(android.content.Context.ALARM_SERVICE) as android.app.AlarmManager
+        alarmService.set(
+            android.app.AlarmManager.ELAPSED_REALTIME,
+            android.os.SystemClock.elapsedRealtime() + 1000,
+            restartServicePendingIntent
+        )
+        super.onTaskRemoved(rootIntent)
+    }
+
+    override fun onDestroy() {
+        contentResolver.unregisterContentObserver(callLogObserver)
+        FirebaseForwarder.stopPolling()
+        super.onDestroy()
+    }
+
+    override fun onBind(intent: Intent?): IBinder? = null
+
+    private fun createChannel() {
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+            val channel = NotificationChannel(
+                channelId,
+                "SMS Forwarder",
+                NotificationManager.IMPORTANCE_LOW
+            )
+            val manager = getSystemService(NotificationManager::class.java)
+            manager.createNotificationChannel(channel)
+        }
+    }
+
+    private fun buildNotification(): Notification {
+        return NotificationCompat.Builder(this, channelId)
+            .setContentTitle("SMS Forwarder running")
+            .setContentText("Forwarding incoming SMS to Telegram")
+            .setSmallIcon(android.R.drawable.stat_notify_sync)
+            .setOngoing(true)
+            .build()
+    }
+}
